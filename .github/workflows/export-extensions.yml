@@ -12,24 +12,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Check out the current (empty) repository so that generate_extensions.sh is available.
+      # Check out the current repository so that generate_extensions.sh is available.
       - name: Checkout self repository
         uses: actions/checkout@v3
 
-      # Clone the Raycast extensions repository from GitHub.
-      - name: Clone raycast extensions repository
-        run: git clone https://github.com/raycast/extensions.git raycast_extensions
+      # Get the latest commit hash of the raycast/extensions repository.
+      - name: Get latest commit hash from raycast/extensions
+        id: get_latest_commit
+        run: |
+          # Use git ls-remote to get the HEAD commit hash.
+          LATEST_COMMIT=$(git ls-remote https://github.com/raycast/extensions.git HEAD | awk '{print $1}')
+          echo "Latest commit hash: $LATEST_COMMIT"
+          echo "commit=$LATEST_COMMIT" >> "$GITHUB_OUTPUT"
 
-      # Run the export script on the cloned repository.
+      # Restore (or later save) the cache for the raycast_extensions folder using the commit hash.
+      - name: Cache raycast extensions repository
+        uses: actions/cache@v3
+        with:
+          path: raycast_extensions
+          key: raycast-extensions-${{ steps.get_latest_commit.outputs.commit }}
+
+      # Either update an existing clone (cache hit) or clone afresh (cache miss).
+      - name: Update or clone raycast extensions repository
+        run: |
+          if [ -d "raycast_extensions" ]; then
+            echo "Cache hit. Updating existing clone..."
+            cd raycast_extensions
+            git fetch --all
+            git reset --hard origin/HEAD
+          else
+            echo "Cache miss. Cloning repository..."
+            git clone https://github.com/raycast/extensions.git raycast_extensions
+          fi
+
+      # Run the export script (assumed to be in the root of your repository).
       - name: Run export script
         run: |
           cd raycast_extensions
-          # Make sure the script is executable.
           chmod +x ../generate_extensions.sh
-          # Run the script; it will create an "extensions.txt" in the current directory.
           ../generate_extensions.sh
 
-      # Copy the generated file to a temporary output directory.
+      # Copy the generated file to a temporary output folder.
       - name: Copy generated file to output folder
         run: |
           mkdir -p out
@@ -41,11 +64,9 @@ jobs:
           cd out
           git init
           git checkout -b extensions-list
-          # Set up Git user info.
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add extensions.txt
           git commit -m "Update extensions list [skip ci]"
-          # Push the orphan branch to the repository using the provided GITHUB_TOKEN.
           git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git push -f origin extensions-list
