@@ -30,9 +30,12 @@ chmod +x generate_extensions.sh view_extensions.sh
 ```
 
 3. View extensions interactively (requires [fzf](https://github.com/junegunn/fzf)):
+
 ```bash
 ./view_extensions.sh
 ```
+
+![view extensions](./docs/images/view_extensions.png)
 
 Or generate a fresh list from your local Raycast extensions:
 ```bash
