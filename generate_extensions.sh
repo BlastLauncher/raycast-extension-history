@@ -1,31 +1,32 @@
 #!/bin/bash
-# generate_extensions.sh
-# This script generates an extensions.txt file that lists each extension’s
-# first appearance time (using the commit timestamp) in ascending order.
+# generate_extensions.sh (Parallelized Version)
+# This script generates a sorted list of extensions with their first commit timestamps,
+# running multiple git log commands concurrently.
 #
-# It is intended to be run from the root of the cloned repository.
-# If the repository structure has an "extensions/extensions" folder, that folder is used;
-# otherwise it falls back to "extensions".
+# It assumes the extensions are in "extensions/extensions" if that folder exists,
+# otherwise in "extensions".
 
 output_file="extensions.txt"
-# Clear any previous output
-> "$output_file"
+rm -f "$output_file"
 
-# Determine which folder contains the extension directories.
 if [ -d "extensions/extensions" ]; then
   EXT_DIR="extensions/extensions"
 else
   EXT_DIR="extensions"
 fi
 
-# Loop over each subdirectory (each extension) and get the timestamp
-for ext in "$EXT_DIR"/*; do
-  if [ -d "$ext" ]; then
-    # Look for the first commit that added a file in this extension.
-    first_commit_date=$(git log --diff-filter=A --reverse --format="%at" -- "$ext" | head -n 1)
-    echo "$first_commit_date $ext" >> "$output_file"
-  fi
-done
+# Create a temporary file to hold intermediate results.
+temp_file=$(mktemp)
 
-# Sort the file numerically (by Unix timestamp) in place.
-sort -n "$output_file" -o "$output_file"
+# Find each extension directory (one level deep) and process them in parallel.
+find "$EXT_DIR" -mindepth 1 -maxdepth 1 -type d | sort | \
+  xargs -I {} -P 8 bash -c '
+    ext="{}"
+    first_commit=$(git log --diff-filter=A --reverse --format="%at" -- "$ext" | head -n 1)
+    # Print the result; if no commit is found, first_commit will be empty.
+    echo "$first_commit $ext"
+  ' >> "$temp_file"
+
+# Sort the results numerically by timestamp and output to the final file.
+sort -n "$temp_file" -o "$output_file"
+rm "$temp_file"
